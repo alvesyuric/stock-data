@@ -1,0 +1,108 @@
+﻿DEFINE
+// Initial tables
+VAR __tables = INFO.TABLES()
+VAR __columns = INFO.COLUMNS()
+VAR __measures = INFO.MEASURES()
+VAR __formats = INFO.FORMATSTRINGDEFINITIONS()
+VAR __relationships = INFO.RELATIONSHIPS()
+VAR __calcGroups = INFO.CALCULATIONGROUPS()
+VAR __calcItems = INFO.CALCULATIONITEMS()
+VAR __dependencies = INFO.CALCDEPENDENCY()
+VAR __partitions = INFO.PARTITIONS()
+
+// Measures
+VAR __measuresResult =
+SELECTCOLUMNS(
+    ADDCOLUMNS(
+        __measures,
+        "Table", MAXX(FILTER(__tables, [ID] = [TableID]), [Name]),
+        "Format", MAXX(FILTER(__formats, [ObjectID] = [ID]), [Expression])
+    ),
+    "Table", [Table],
+    "Measure", [Name],
+    "Expression", [Expression],
+    "Format", [FormatString],
+    "IsHidden", [IsHidden],
+    "Description", [Description],
+    "DataType", SWITCH([DataType], 2, "String", 6, "Whole Number", 8, "Double", 9, "Datetime", 10, "Currency", 11, "Boolean"),
+    "Folder", [DisplayFolder]
+)
+
+// Columns
+VAR __columnsResult =
+SELECTCOLUMNS(
+    ADDCOLUMNS(
+        FILTER(__columns, NOT CONTAINSSTRING([ExplicitName], "RowNumber")),
+        "TableName", MAXX(FILTER(__tables, [ID] = [TableID]), [Name]),
+        "SortedBy", MAXX(FILTER(__columns, [ID] = [SortByColumnID]), [ExplicitName])
+    ),
+    "Table", [TableName],
+    "Column", COALESCE([ExplicitName], [InferredName]),
+    "SortedBy", [SortedBy],
+    "Format", COALESCE([FormatString], "String"),
+    "Folder", [DisplayFolder],
+    "IsHidden", [IsHidden],
+    "Expression", [Expression]
+)
+
+// Relationships
+VAR __relationshipsResult =
+SELECTCOLUMNS(
+    ADDCOLUMNS(
+        __relationships,
+        "FromTable", MAXX(FILTER(__columns, [TableID] = [FromTableID]), MAXX(__tables, [Name])),
+        "ToTable", MAXX(FILTER(__columns, [TableID] = [ToTableID]), MAXX(__tables, [Name])),
+        "FromColumn", MAXX(FILTER(__columns, [ID] = [FromColumnID]), COALESCE([ExplicitName], [InferredName])),
+        "ToColumn", MAXX(FILTER(__columns, [ID] = [ToColumnID]), COALESCE([ExplicitName], [InferredName]))
+    ),
+    "FromTable", [FromTable],
+    "FromColumn", [FromColumn],
+    "ToTable", [ToTable],
+    "ToColumn", [ToColumn],
+    "IsActive", [IsActive],
+    "Direction", IF([CrossFilteringBehavior] = 2, "Both", "Single")
+)
+
+// Calculation Groups
+VAR __calcGroupsResult =
+SELECTCOLUMNS(
+    ADDCOLUMNS(
+        __calcItems,
+        "CalcGroup", MAXX(FILTER(__tables, [ID] = MAXX(__calcGroups, [TableID])), [Name]),
+        "Format", MAXX(FILTER(__formats, [ID] = [FormatStringDefinitionID]), [Expression])
+    ),
+    "CalcGroup", [CalcGroup],
+    "Precedence", MAXX(__calcGroups, [Precedence]),
+    "CalcItem", [Name],
+    "Expression", [Expression],
+    "Format", [Format]
+)
+
+// Parameters
+VAR __parametersResult =
+SELECTCOLUMNS(
+    SUMMARIZE(
+        FILTER(__dependencies, [REFERENCED_OBJECT_TYPE] = "M_EXPRESSION" && CONTAINSSTRING([REFERENCED_EXPRESSION], "IsParameterQuery")),
+        [REFERENCED_OBJECT], [REFERENCED_EXPRESSION]
+    ),
+    "Name", [REFERENCED_OBJECT],
+    "Expression", [REFERENCED_EXPRESSION]
+)
+
+// Queries (M or DAX)
+VAR __partitionsResult =
+SELECTCOLUMNS(
+    __partitions,
+    "TableName", [Name],
+    "Description", [Description],
+    "Code", [QueryDefinition],
+    "Type", SWITCH([Type], 4, "M", 2, "DAX", 7, "Internal")
+)
+
+// Data outputs
+EVALUATE __measuresResult ORDER BY [Table], [Measure]
+EVALUATE __columnsResult ORDER BY [Table], [Column]
+EVALUATE __relationshipsResult ORDER BY [FromTable], [ToTable]
+EVALUATE __calcGroupsResult ORDER BY [CalcGroup]
+EVALUATE __parametersResult
+EVALUATE __partitionsResult ORDER BY [TableName]
